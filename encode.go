@@ -18,14 +18,14 @@ type encoder struct {
 	flow    bool
 }
 
-func newEncoder() (e *encoder) {
+func newEncoder(implicitDoc bool) (e *encoder) {
 	e = &encoder{}
 	e.must(yaml_emitter_initialize(&e.emitter))
 	yaml_emitter_set_output_string(&e.emitter, &e.out)
 	yaml_emitter_set_unicode(&e.emitter, true)
 	e.must(yaml_stream_start_event_initialize(&e.event, yaml_UTF8_ENCODING))
 	e.emit()
-	e.must(yaml_document_start_event_initialize(&e.event, nil, nil, true))
+	e.must(yaml_document_start_event_initialize(&e.event, nil, nil, implicitDoc))
 	e.emit()
 	return e
 }
@@ -65,6 +65,14 @@ func (e *encoder) marshal(tag string, in reflect.Value) {
 		return
 	}
 	iface := in.Interface()
+	if m, ok := iface.(Tagged); ok {
+		if in.Kind() == reflect.Ptr && in.IsNil() {
+			e.nilv()
+			return
+		}
+		tag = m.TagYAML()
+	}
+	// Tag in MetaConfig from Marshaler has higher priority
 	if m, ok := iface.(Marshaler); ok {
 		v, err := m.MarshalYAML()
 		if err != nil {
@@ -74,7 +82,12 @@ func (e *encoder) marshal(tag string, in reflect.Value) {
 			e.nilv()
 			return
 		}
-		in = reflect.ValueOf(v)
+		if inMeta, ok := v.(MetaConfig); ok {
+			tag = inMeta.Tag
+			in = reflect.ValueOf(inMeta.Value)
+		} else {
+			in = reflect.ValueOf(v)
+		}
 	} else if m, ok := iface.(encoding.TextMarshaler); ok {
 		text, err := m.MarshalText()
 		if err != nil {

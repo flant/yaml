@@ -23,6 +23,21 @@ type MapItem struct {
 	Key, Value interface{}
 }
 
+// Quick and dirty way to pass implicit flag to yaml_document_start_event_initialize
+// and to pass a yaml tag for objects
+type MetaConfig struct {
+	// add --- if false. Works only for Marshal argument
+	ImplicitDoc bool
+	// add ! yaml tag for object
+	Tag string
+	// original value
+	Value interface{}
+}
+
+func DefaultMetaConfig() MetaConfig {
+	return MetaConfig{true, "", nil}
+}
+
 // The Unmarshaler interface may be implemented by types to customize their
 // behavior when being unmarshaled from a YAML document. The UnmarshalYAML
 // method receives a function that may be called to unmarshal the original
@@ -40,6 +55,12 @@ type Unmarshaler interface {
 // and returns with the provided error.
 type Marshaler interface {
 	MarshalYAML() (interface{}, error)
+}
+
+// The Tagged interface may be implemented by types to specify
+// custom yaml tag. i.e. for interconnection with other languages.
+type Tagged interface {
+	TagYAML() string
 }
 
 // Unmarshal decodes the first document found within the in byte slice
@@ -148,7 +169,12 @@ func unmarshal(in []byte, out interface{}, strict bool) (err error) {
 //
 func Marshal(in interface{}) (out []byte, err error) {
 	defer handleErr(&err)
-	e := newEncoder()
+	implicitDoc := true
+	if inMeta, ok := in.(MetaConfig); ok {
+		implicitDoc = inMeta.ImplicitDoc
+		in = inMeta.Value
+	}
+	e := newEncoder(implicitDoc)
 	defer e.destroy()
 	e.marshal("", reflect.ValueOf(in))
 	e.finish()
